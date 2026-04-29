@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import Image from 'next/image'
 import { Product } from '@/types'
 import { PRODUCTS, CATEGORIES } from '@/lib/products'
 
@@ -19,7 +20,7 @@ export default function ProductGrid({ onSelect, selectedId }: ProductGridProps) 
   return (
     <div>
       {/* Category Filter */}
-      <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2 scrollbar-hide">
+      <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-2">
         {CATEGORIES.map(cat => (
           <button
             key={cat.id}
@@ -45,26 +46,16 @@ export default function ProductGrid({ onSelect, selectedId }: ProductGridProps) 
               key={product.id}
               onClick={() => onSelect(product)}
               className={`product-card group text-left rounded-xl overflow-hidden transition-all duration-300 ${
-                isSelected
-                  ? 'ring-2 ring-navy-900 ring-offset-2 ring-offset-cream'
-                  : ''
+                isSelected ? 'ring-2 ring-navy-900 ring-offset-2 ring-offset-cream' : ''
               }`}
             >
               {/* Image */}
               <div className="aspect-[3/4] bg-sand-100 overflow-hidden relative">
-                <div className="product-image w-full h-full bg-gradient-to-br from-sand-100 to-sand-200 flex items-center justify-center">
-                  {/* Placeholder — substituir por img real */}
-                  <div className="text-center p-4">
-                    <div
-                      className="w-full h-32 rounded-lg mb-3 mx-auto opacity-40"
-                      style={{ background: `linear-gradient(135deg, ${product.colors[0]}22, ${product.colors[0]}44)` }}
-                    />
-                    <div
-                      className="w-8 h-8 rounded-full mx-auto"
-                      style={{ background: product.colors[0] }}
-                    />
-                  </div>
-                </div>
+                <img
+                  src={product.imageUrl}
+                  alt={product.name}
+                  className="product-image w-full h-full object-cover"
+                />
 
                 {/* Selected overlay */}
                 {isSelected && (
