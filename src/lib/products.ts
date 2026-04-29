@@ -1,7 +1,3 @@
-// ============================================
-// LA CAMICERIA — Catálogo de Produtos
-// ============================================
-
 import { Product } from '@/types'
 
 export const PRODUCTS: Product[] = [
@@ -10,7 +6,7 @@ export const PRODUCTS: Product[] = [
     name: 'Costume Maestro Cinza Claro',
     category: 'costume',
     categoryLabel: 'Costume',
-    imageUrl: '/products/costume-maestro-cinza.png',
+    imageUrl: '/products/costume-maestro-cinza.jpg',
     colors: ['#BEBEBE', '#A9A9A9'],
     description: 'Corte slim refinado, cinza claro com caimento impecável.',
     featured: true,
@@ -20,7 +16,7 @@ export const PRODUCTS: Product[] = [
     name: 'Costume Stilo Xadrez',
     category: 'costume',
     categoryLabel: 'Costume',
-    imageUrl: '/products/costume-stilo-xadrez-preto-azulmarinho.png',
+    imageUrl: '/products/costume-stilo-xadrez-preto-azulmarinho.jpg',
     colors: ['#1a1a1a', '#102A43'],
     description: 'Corte slim em xadrez sofisticado, preto e azul marinho.',
     featured: true,
@@ -30,7 +26,7 @@ export const PRODUCTS: Product[] = [
     name: 'Costume Eleganza',
     category: 'costume',
     categoryLabel: 'Costume',
-    imageUrl: '/products/costume-eleganza-cinzapretoazulmarinho.png',
+    imageUrl: '/products/costume-eleganza-cinzapretoazulmarinho.jpg',
     colors: ['#BEBEBE', '#1a1a1a', '#102A43'],
     description: 'Corte slim em paleta tricolor: cinza, preto e azul marinho.',
     featured: true,
@@ -40,7 +36,7 @@ export const PRODUCTS: Product[] = [
     name: 'Costume Supremo',
     category: 'costume',
     categoryLabel: 'Costume',
-    imageUrl: '/products/costume-supremo-azulclaroazulmarinho.png',
+    imageUrl: '/products/costume-supremo-azulclaroazulmarinho.jpg',
     colors: ['#6FA3BF', '#102A43'],
     description: 'Corte tradicional elegante em azul claro e azul marinho.',
     featured: true,
