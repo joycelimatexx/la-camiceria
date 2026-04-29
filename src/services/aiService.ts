@@ -1,149 +1,102 @@
 // ============================================
-// LA CAMICERIA — AI Generation Service
+// LA CAMICERIA — AI Service (Replicate IDM-VTON)
 // ============================================
 
 import { GenerateRequest, GenerateResponse } from '@/types'
 
-/**
- * Gera o prompt automático para o try-on
- */
 export function buildTryOnPrompt(productName: string, category: string): string {
-  const categoryContext: Record<string, string> = {
-    camisa: 'dress shirt with collar and buttons',
-    polo: 'polo shirt with collar',
-    bermuda: 'tailored shorts below the knee',
-    trico: 'knitted sweater with fine texture',
-    blazer: 'unstructured linen blazer',
-  }
-
-  const clothingType = categoryContext[category] || 'clothing item'
-
-  return `High-end fashion editorial photography. A sophisticated man wearing a ${clothingType} called "${productName}" by La Camiceria. 
-
-The garment is applied realistically onto the person: preserve exact clothing color, fabric texture, stitching details, and natural drape. Maintain the person's face, body proportions, and natural pose.
-
-Style: Mediterranean luxury resort campaign. Natural golden-hour lighting, white linen background or seaside setting. Minimalist luxury fashion photography. Clean, breathable, effortless elegance. Shot on medium format camera. Sharp details on fabric texture, soft bokeh background. Color grading: warm whites, deep navy shadows, sand highlights.
-
-Quality: photorealistic, 8k resolution, professional fashion campaign, no artifacts.`
+  return `High-end fashion editorial. Person wearing ${productName} by La Camiceria. Mediterranean luxury, natural lighting, professional campaign photography.`
 }
 
 /**
- * Gera imagem via OpenAI DALL-E 3
+ * Gera try-on real via Replicate IDM-VTON
  */
-export async function generateWithOpenAI(request: GenerateRequest): Promise<GenerateResponse> {
-  const apiKey = process.env.OPENAI_API_KEY
+export async function generateWithReplicate(request: GenerateRequest): Promise<GenerateResponse> {
+  const apiKey = process.env.REPLICATE_API_KEY
   if (!apiKey) {
-    return { success: false, error: 'OpenAI API key não configurada.' }
+    return { success: false, error: 'Replicate API key não configurada.' }
   }
 
-  const prompt = buildTryOnPrompt(request.productName, request.productCategory)
-
   try {
-    // Para DALL-E 3 com imagem de referência, usar a edição de imagem
-    // Nota: DALL-E 3 edits requerem PNG com canal alpha
-    const response = await fetch('https://api.openai.com/v1/images/generations', {
+    // Inicia a predição
+    const startResponse = await fetch('https://api.replicate.com/v1/models/cuuupid/idm-vton/predictions', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${apiKey}`,
         'Content-Type': 'application/json',
+        'Prefer': 'wait=60',
       },
       body: JSON.stringify({
-        model: 'dall-e-3',
-        prompt: prompt,
-        size: '1024x1024',
-        quality: 'hd',
-        n: 1,
-      }),
-    })
-
-    if (!response.ok) {
-      const error = await response.json()
-      return { success: false, error: error.error?.message || 'Erro na geração.' }
-    }
-
-    const data = await response.json()
-    const imageUrl = data.data?.[0]?.url
-
-    if (!imageUrl) {
-      return { success: false, error: 'Nenhuma imagem gerada.' }
-    }
-
-    return { success: true, imageUrl }
-  } catch (error) {
-    return { success: false, error: 'Erro de conexão com OpenAI.' }
-  }
-}
-
-/**
- * Gera imagem via Freepik Mystic
- */
-export async function generateWithFreepik(request: GenerateRequest): Promise<GenerateResponse> {
-  const apiKey = process.env.FREEPIK_API_KEY
-  if (!apiKey) {
-    return { success: false, error: 'Freepik API key não configurada.' }
-  }
-
-  const prompt = buildTryOnPrompt(request.productName, request.productCategory)
-
-  try {
-    // Freepik Mystic API
-    const response = await fetch('https://api.freepik.com/v1/ai/text-to-image', {
-      method: 'POST',
-      headers: {
-        'x-freepik-api-key': apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        prompt,
-        negative_prompt: 'blurry, low quality, distorted face, wrong proportions, artifacts, ugly, bad anatomy',
-        guidance_scale: 7,
-        num_images: 1,
-        image: {
-          size: '1:1',
-        },
-        styling: {
-          style: 'photo',
-          color: 'warm',
-          lightning: 'studio',
-          framing: 'full-body',
+        input: {
+          human_img: `data:image/jpeg;base64,${request.userImageBase64}`,
+          garm_img: request.productImageUrl,
+          garment_des: `${request.productName} - ${request.productCategory} premium La Camiceria`,
+          is_checked: true,
+          is_checked_crop: false,
+          denoise_steps: 30,
+          seed: 42,
         },
       }),
     })
 
-    if (!response.ok) {
-      const error = await response.json()
-      return { success: false, error: error.message || 'Erro na geração Freepik.' }
+    if (!startResponse.ok) {
+      const error = await startResponse.json()
+      return { success: false, error: error.detail || 'Erro ao iniciar geração.' }
     }
 
-    const data = await response.json()
-    const imageUrl = data.data?.[0]?.base64
-      ? `data:image/jpeg;base64,${data.data[0].base64}`
-      : data.data?.[0]?.url
+    const prediction = await startResponse.json()
 
-    if (!imageUrl) {
-      return { success: false, error: 'Nenhuma imagem gerada.' }
+    // Se já veio com output (Prefer: wait)
+    if (prediction.output) {
+      return { success: true, imageUrl: prediction.output }
     }
 
-    return { success: true, imageUrl }
+    // Polling para aguardar o resultado
+    const predictionId = prediction.id
+    let attempts = 0
+    const maxAttempts = 30
+
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 3000))
+      attempts++
+
+      const pollResponse = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
+        headers: { 'Authorization': `Bearer ${apiKey}` },
+      })
+
+      const poll = await pollResponse.json()
+
+      if (poll.status === 'succeeded' && poll.output) {
+        return { success: true, imageUrl: poll.output }
+      }
+
+      if (poll.status === 'failed') {
+        return { success: false, error: poll.error || 'Geração falhou.' }
+      }
+    }
+
+    return { success: false, error: 'Tempo esgotado. Tente novamente.' }
+
   } catch (error) {
-    return { success: false, error: 'Erro de conexão com Freepik.' }
+    console.error('[Replicate] Error:', error)
+    return { success: false, error: 'Erro de conexão com Replicate.' }
   }
 }
 
 /**
- * Dispatcher principal — usa o provider configurado
+ * Dispatcher principal
  */
 export async function generateTryOnImage(request: GenerateRequest): Promise<GenerateResponse> {
-  // Prioridade: OpenAI > Freepik > Mock
+  if (process.env.REPLICATE_API_KEY) {
+    return generateWithReplicate(request)
+  }
+
   if (process.env.OPENAI_API_KEY) {
+    const { generateWithOpenAI } = await import('./openaiService')
     return generateWithOpenAI(request)
   }
 
-  if (process.env.FREEPIK_API_KEY) {
-    return generateWithFreepik(request)
-  }
-
-  // Modo demo sem API
+  // Modo demo
   await new Promise(resolve => setTimeout(resolve, 3000))
   return {
     success: true,
