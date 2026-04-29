@@ -2,7 +2,7 @@
 // LA CAMICERIA — Type Definitions
 // ============================================
 
-export type ProductCategory = 'camisa' | 'polo' | 'bermuda' | 'trico' | 'blazer'
+export type ProductCategory = 'camisa' | 'polo' | 'bermuda' | 'trico' | 'blazer' | 'costume'
 
 export interface Product {
   id: string
