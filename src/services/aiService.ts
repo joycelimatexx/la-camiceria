@@ -1,105 +1,145 @@
 // ============================================
-// LA CAMICERIA — AI Service (Replicate IDM-VTON)
+// LA CAMICERIA — AI Service (GPT-4o + DALL-E 3)
 // ============================================
 
 import { GenerateRequest, GenerateResponse } from '@/types'
 
-export function buildTryOnPrompt(productName: string, category: string): string {
-  return `High-end fashion editorial. Person wearing ${productName} by La Camiceria. Mediterranean luxury, natural lighting, professional campaign photography.`
+/**
+ * Passo 1: GPT-4o analisa as duas imagens e gera um prompt detalhado
+ */
+async function analyzeImagesWithGPT4o(
+  userImageBase64: string,
+  productImageUrl: string,
+  productName: string,
+  apiKey: string
+): Promise<string> {
+
+  const productFullUrl = productImageUrl.startsWith('/')
+    ? `${process.env.NEXT_PUBLIC_APP_URL}${productImageUrl}`
+    : productImageUrl
+
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      max_tokens: 1000,
+      messages: [
+        {
+          role: 'user',
+          content: [
+            {
+              type: 'text',
+              text: `Você é um especialista em moda masculina premium. Analise as duas imagens abaixo:
+              
+IMAGEM 1: Foto de uma pessoa (o cliente)
+IMAGEM 2: Peça de roupa "${productName}" da La Camiceria
+
+Descreva em detalhes em inglês para gerar uma imagem realista do cliente vestindo essa peça:
+- Descreva o rosto, cabelo, idade aparente, tom de pele e expressão da pessoa exatamente como está na foto
+- Descreva o corpo, postura e pose exatamente como está
+- Descreva a peça de roupa com todos os detalhes: cor exata, tecido, corte, textura, botões, detalhes
+- O resultado deve parecer uma foto profissional de campanha premium
+- Mantenha EXATAMENTE o rosto e características físicas da pessoa
+
+Gere apenas o prompt em inglês, sem explicações adicionais.`,
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: `data:image/jpeg;base64,${userImageBase64}`,
+                detail: 'high',
+              },
+            },
+            {
+              type: 'image_url',
+              image_url: {
+                url: productFullUrl,
+                detail: 'high',
+              },
+            },
+          ],
+        },
+      ],
+    }),
+  })
+
+  const data = await response.json()
+  return data.choices?.[0]?.message?.content || ''
 }
 
 /**
- * Gera try-on real via Replicate IDM-VTON
+ * Passo 2: DALL-E 3 gera a imagem com o prompt detalhado
  */
-export async function generateWithReplicate(request: GenerateRequest): Promise<GenerateResponse> {
-  const apiKey = process.env.REPLICATE_API_KEY
+async function generateImageWithDALLE(prompt: string, apiKey: string): Promise<string | null> {
+  const finalPrompt = `${prompt}
+
+IMPORTANT: This is a premium fashion campaign photo for La Camiceria. 
+Ultra-realistic photography, 8k quality, professional studio lighting with natural tones.
+Mediterranean luxury aesthetic. The person's face and physical characteristics must match exactly.
+No artistic filters, pure photorealistic result.`
+
+  const response = await fetch('https://api.openai.com/v1/images/generations', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${apiKey}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'dall-e-3',
+      prompt: finalPrompt,
+      size: '1024x1792',
+      quality: 'hd',
+      n: 1,
+    }),
+  })
+
+  const data = await response.json()
+  return data.data?.[0]?.url || null
+}
+
+/**
+ * Pipeline completo: GPT-4o análise → DALL-E 3 geração
+ */
+export async function generateTryOnImage(request: GenerateRequest): Promise<GenerateResponse> {
+  const apiKey = process.env.OPENAI_API_KEY
+
   if (!apiKey) {
-    return { success: false, error: 'Replicate API key não configurada.' }
+    // Modo demo
+    await new Promise(resolve => setTimeout(resolve, 3000))
+    return {
+      success: true,
+      imageUrl: `https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&h=1000&fit=crop&q=80`,
+    }
   }
 
   try {
-    // Inicia a predição
-    const startResponse = await fetch('https://api.replicate.com/v1/models/cuuupid/idm-vton/predictions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-        'Prefer': 'wait=60',
-      },
-      body: JSON.stringify({
-        input: {
-          human_img: `data:image/jpeg;base64,${request.userImageBase64}`,
-          garm_img: request.productImageUrl,
-          garment_des: `${request.productName} - ${request.productCategory} premium La Camiceria`,
-          is_checked: true,
-          is_checked_crop: false,
-          denoise_steps: 30,
-          seed: 42,
-        },
-      }),
-    })
+    // Passo 1: GPT-4o analisa as duas imagens
+    const detailedPrompt = await analyzeImagesWithGPT4o(
+      request.userImageBase64,
+      request.productImageUrl,
+      request.productName,
+      apiKey
+    )
 
-    if (!startResponse.ok) {
-      const error = await startResponse.json()
-      return { success: false, error: error.detail || 'Erro ao iniciar geração.' }
+    if (!detailedPrompt) {
+      return { success: false, error: 'Não foi possível analisar as imagens.' }
     }
 
-    const prediction = await startResponse.json()
+    // Passo 2: DALL-E 3 gera com o prompt detalhado
+    const imageUrl = await generateImageWithDALLE(detailedPrompt, apiKey)
 
-    // Se já veio com output (Prefer: wait)
-    if (prediction.output) {
-      return { success: true, imageUrl: prediction.output }
+    if (!imageUrl) {
+      return { success: false, error: 'Não foi possível gerar a imagem.' }
     }
 
-    // Polling para aguardar o resultado
-    const predictionId = prediction.id
-    let attempts = 0
-    const maxAttempts = 30
-
-    while (attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 3000))
-      attempts++
-
-      const pollResponse = await fetch(`https://api.replicate.com/v1/predictions/${predictionId}`, {
-        headers: { 'Authorization': `Bearer ${apiKey}` },
-      })
-
-      const poll = await pollResponse.json()
-
-      if (poll.status === 'succeeded' && poll.output) {
-        return { success: true, imageUrl: poll.output }
-      }
-
-      if (poll.status === 'failed') {
-        return { success: false, error: poll.error || 'Geração falhou.' }
-      }
-    }
-
-    return { success: false, error: 'Tempo esgotado. Tente novamente.' }
+    return { success: true, imageUrl }
 
   } catch (error) {
-    console.error('[Replicate] Error:', error)
-    return { success: false, error: 'Erro de conexão com Replicate.' }
-  }
-}
-
-/**
- * Dispatcher principal
- */
-export async function generateTryOnImage(request: GenerateRequest): Promise<GenerateResponse> {
-  if (process.env.REPLICATE_API_KEY) {
-    return generateWithReplicate(request)
-  }
-
-  if (process.env.OPENAI_API_KEY) {
-    const { generateWithOpenAI } = await import('./openaiService')
-    return generateWithOpenAI(request)
-  }
-
-  // Modo demo
-  await new Promise(resolve => setTimeout(resolve, 3000))
-  return {
-    success: true,
-    imageUrl: `https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=800&h=1000&fit=crop&q=80`,
+    console.error('[AI Service] Error:', error)
+    return { success: false, error: 'Erro na geração. Tente novamente.' }
   }
 }
