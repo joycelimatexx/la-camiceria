@@ -15,7 +15,7 @@ export interface Product {
   featured?: boolean
 }
 
-export type GenerationStep = 
+export type GenerationStep =
   | 'idle'
   | 'uploading'
   | 'processing'
@@ -42,6 +42,7 @@ export interface GenerationHistory {
 export interface GenerateRequest {
   userImageBase64: string
   productImageUrl: string
+  productImageBase64?: string   // ← adicionado para Kling (evita fetch server-side de /products/)
   productName: string
   productCategory: string
 }
